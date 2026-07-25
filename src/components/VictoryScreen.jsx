@@ -1,11 +1,15 @@
 import React, { useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import { Trophy, RotateCcw, HelpCircle, Target, ArrowRight } from 'lucide-react';
+import { Trophy, RotateCcw, Target, ArrowRight } from 'lucide-react';
 import { sound } from '../utils/sound';
 
-export default function VictoryScreen({ mode, secretValue, winStats, onPlayAgain, onChooseNewMode }) {
+export default function VictoryScreen({ mode, winStats, onPlayAgain, onChooseNewMode }) {
+  const winner = winStats?.winner || 'P1';
+  const p1Secret = winStats?.p1Secret;
+  const p2Secret = winStats?.p2Secret;
+
   useEffect(() => {
-    const count = 200;
+    const count = 250;
     const defaults = { origin: { y: 0.7 } };
 
     function fire(particleRatio, opts) {
@@ -33,47 +37,32 @@ export default function VictoryScreen({ mode, secretValue, winStats, onPlayAgain
           </div>
         </div>
         <div className="absolute -bottom-2 right-0 left-0 mx-auto w-max px-3 py-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black uppercase tracking-widest shadow-lg">
-          Player 2 G'olib!
+          {winner === 'P1' ? 'Player 1 G\'olib!' : 'Player 2 G\'olib!'}
         </div>
       </div>
 
       <div className="space-y-2">
         <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-          G'olib Bo'ldingiz! 🎉
+          {winner === 'P1' ? 'Player 1 G\'alaba Qozondi! 🎉' : 'Player 2 G\'alaba Qozondi! 🎉'}
         </h2>
         <p className="text-slate-400 text-sm sm:text-base">
-          Player 2 sirli sonni to'g'ri topib g'alaba qozondi!
+          {winner === 'P1' ? 'Player 1 Player 2 ning sirli sonini birinchi bo\'lib topdi!' : 'Player 2 Player 1 ning sirli sonini birinchi bo\'lib topdi!'}
         </p>
       </div>
 
-      <div className="glass-card rounded-3xl p-6 border border-cyan-500/30 space-y-2 glow-cyan">
-        <span className="text-xs uppercase font-bold tracking-wider text-slate-400">Sirli Son Nima Edi?</span>
-        <div className="text-4xl sm:text-5xl font-black text-cyan-400 font-mono">
-          {mode.prefix}{secretValue} {mode.unit}
-        </div>
-        {mode.itemName && (
-          <p className="text-xs text-slate-300 font-medium pt-1">
-            Buyum: <strong className="text-white">{mode.itemName}</strong>
-          </p>
-        )}
-      </div>
-
+      {/* BOTH SECRETS REVEAL BOX */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
-          <div className="flex items-center justify-center gap-1.5 text-indigo-400 text-xs font-bold uppercase tracking-wider">
-            <HelpCircle className="w-4 h-4" /> Berilgan Savollar
-          </div>
-          <div className="text-2xl font-black text-white">
-            {winStats?.questionCount || 0} ta
+        <div className="glass-card rounded-3xl p-5 border border-cyan-500/30 space-y-1 glow-cyan">
+          <span className="text-[11px] uppercase font-bold tracking-wider text-slate-400">Player 1 Siri</span>
+          <div className="text-2xl sm:text-3xl font-black text-cyan-400 font-mono">
+            {mode.prefix}{p1Secret} {mode.unit}
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
-          <div className="flex items-center justify-center gap-1.5 text-rose-400 text-xs font-bold uppercase tracking-wider">
-            <Target className="w-4 h-4" /> Urinishlar Soni
-          </div>
-          <div className="text-2xl font-black text-white">
-            {winStats?.guessCount || 1} ta
+        <div className="glass-card rounded-3xl p-5 border border-indigo-500/30 space-y-1 glow-purple">
+          <span className="text-[11px] uppercase font-bold tracking-wider text-slate-400">Player 2 Siri</span>
+          <div className="text-2xl sm:text-3xl font-black text-indigo-400 font-mono">
+            {mode.prefix}{p2Secret} {mode.unit}
           </div>
         </div>
       </div>

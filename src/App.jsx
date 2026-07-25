@@ -9,10 +9,13 @@ import { sound } from './utils/sound';
 import { peerManager } from './utils/peer';
 
 export default function App() {
-  // STEPS: 'MODE_SELECT' | 'CONNECT_ROOM' | 'SETUP' | 'PLAYING' | 'VICTORY'
   const [currentStep, setCurrentStep] = useState('MODE_SELECT');
   const [selectedMode, setSelectedMode] = useState(null);
-  const [secretValue, setSecretValue] = useState(null);
+  
+  // Dual secret numbers
+  const [p1Secret, setP1Secret] = useState(null);
+  const [p2Secret, setP2Secret] = useState(null);
+  
   const [soundMuted, setSoundMuted] = useState(false);
   const [winStats, setWinStats] = useState(null);
 
@@ -21,13 +24,11 @@ export default function App() {
   const [isHost, setIsHost] = useState(false);
   const [roomCode, setRoomCode] = useState(null);
 
-  // Sound toggle handler
   const handleToggleSound = () => {
     sound.muted = !soundMuted;
     setSoundMuted(!soundMuted);
   };
 
-  // Mode Selection handler
   const handleSelectMode = (modeObj) => {
     setSelectedMode(modeObj);
     if (modeObj.playType === 'ONLINE') {
@@ -35,59 +36,81 @@ export default function App() {
       setCurrentStep('CONNECT_ROOM');
     } else {
       setIsOnline(false);
-      setIsHost(true); // local pass-and-play
+      setIsHost(true);
       setCurrentStep('SETUP');
     }
   };
 
-  // Online Host connected
   const handleConnectedAsHost = (code) => {
     setIsHost(true);
     setRoomCode(code);
     setCurrentStep('SETUP');
   };
 
-  // Online Guest connected
   const handleConnectedAsGuest = (code) => {
     setIsHost(false);
     setRoomCode(code);
     setCurrentStep('SETUP');
   };
 
-  // Secret Number set
-  const handleSecretSet = (val) => {
-    setSecretValue(val);
+  // Local Dual Secret Set
+  const handleDualSecretSetLocal = (s1, s2) => {
+    setP1Secret(s1);
+    setP2Secret(s2);
     setCurrentStep('PLAYING');
+  };
 
-    if (isOnline && isHost) {
+  // Online Dual Secret Set
+  const handleDualSecretSetOnline = (mySecret) => {
+    if (isHost) {
+      setP1Secret(mySecret);
       peerManager.send({
-        type: 'SECRET_SET',
-        secretValue: val
+        type: 'SET_P1_SECRET',
+        val: mySecret
       });
+      if (p2Secret !== null) {
+        setCurrentStep('PLAYING');
+      }
+    } else {
+      setP2Secret(mySecret);
+      peerManager.send({
+        type: 'SET_P2_SECRET',
+        val: mySecret
+      });
+      if (p1Secret !== null) {
+        setCurrentStep('PLAYING');
+      }
     }
   };
 
-  // PeerJS listener for Guest to receive secret set event
+  // PeerJS listener for secrets in Online mode
   useEffect(() => {
     if (!isOnline) return;
 
     const unsubscribe = peerManager.onData((data) => {
-      if (data.type === 'SECRET_SET') {
-        setSecretValue(data.secretValue);
-        setCurrentStep('PLAYING');
+      if (data.type === 'SET_P1_SECRET') {
+        setP1Secret(data.val);
+        // If guest already entered p2Secret, launch game
+        if (p2Secret !== null || !isHost) {
+          setCurrentStep('PLAYING');
+        }
+      } else if (data.type === 'SET_P2_SECRET') {
+        setP2Secret(data.val);
+        // If host already entered p1Secret, launch game
+        if (p1Secret !== null || isHost) {
+          setCurrentStep('PLAYING');
+        }
       }
     });
 
     return () => unsubscribe();
-  }, [isOnline]);
+  }, [isOnline, isHost, p1Secret, p2Secret]);
 
-  // Win handler
   const handleWin = (stats) => {
     setWinStats(stats);
     setCurrentStep('VICTORY');
   };
 
-  // Reset Game handler
   const handleResetGame = () => {
     if (isOnline) {
       peerManager.disconnect();
@@ -95,14 +118,15 @@ export default function App() {
     setIsOnline(false);
     setIsHost(false);
     setRoomCode(null);
-    setSecretValue(null);
+    setP1Secret(null);
+    setP2Secret(null);
     setWinStats(null);
     setCurrentStep('MODE_SELECT');
   };
 
-  // Play Again handler
   const handlePlayAgainSameMode = () => {
-    setSecretValue(null);
+    setP1Secret(null);
+    setP2Secret(null);
     setWinStats(null);
     setCurrentStep('SETUP');
   };
@@ -138,15 +162,16 @@ export default function App() {
             mode={selectedMode}
             isOnline={isOnline}
             isHost={isHost}
-            onSecretSet={handleSecretSet}
+            onDualSecretSet={isOnline ? handleDualSecretSetOnline : handleDualSecretSetLocal}
             onBack={() => setCurrentStep(isOnline ? 'CONNECT_ROOM' : 'MODE_SELECT')}
           />
         )}
 
-        {currentStep === 'PLAYING' && selectedMode && secretValue !== null && (
+        {currentStep === 'PLAYING' && selectedMode && p1Secret !== null && p2Secret !== null && (
           <GameScreen
             mode={selectedMode}
-            secretValue={secretValue}
+            p1Secret={p1Secret}
+            p2Secret={p2Secret}
             isOnline={isOnline}
             isHost={isHost}
             onWin={handleWin}
@@ -156,7 +181,6 @@ export default function App() {
         {currentStep === 'VICTORY' && selectedMode && (
           <VictoryScreen
             mode={selectedMode}
-            secretValue={secretValue}
             winStats={winStats}
             onPlayAgain={handlePlayAgainSameMode}
             onChooseNewMode={handleResetGame}
@@ -165,7 +189,7 @@ export default function App() {
       </main>
 
       <footer className="py-4 border-t border-slate-900 text-center text-xs text-slate-500">
-        SirliDeduct &bull; O'zbek tilidagi 2-kishilik onlayn va lokal mantiqiy o'yin
+        SirliDeduct &bull; Galma-galdan 2-tomonlama mantiqiy o'yin
       </footer>
     </div>
   );

@@ -1,36 +1,46 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, MessageSquare, Target, CheckCircle2, XCircle, User, AlertTriangle, Sparkles } from 'lucide-react';
+import { Send, MessageSquare, Target, CheckCircle2, XCircle, User, AlertTriangle, Sparkles, ArrowRight } from 'lucide-react';
 import { sound } from '../utils/sound';
 import { peerManager } from '../utils/peer';
 
-export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin }) {
+export default function GameScreen({ mode, p1Secret, p2Secret, isOnline, isHost, onWin }) {
+  // Current Turn: 'P1' or 'P2'
+  const [currentTurn, setCurrentTurn] = useState('P1');
+
+  // Messages list
   const [messages, setMessages] = useState([
     {
       id: 1,
       sender: 'SYSTEM',
       type: 'SYSTEM',
-      text: `O'yin Boshlandi! Sirli ${mode.title} ${mode.prefix}${mode.min} va ${mode.prefix}${mode.max} oralig'ida. Player 2, mantiqiy savolingizni bering!`,
+      text: `O'yin Boshlandi! Har ikkalamanngiz sirli sonni o'yladingiz. Galma-galdan savol berib, bir-biringizning soningizni toping! Player 1, birinchi savolingizni bering!`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
 
   const [questionInput, setQuestionInput] = useState('');
   const [guessInput, setGuessInput] = useState('');
-  const [pendingQuestionId, setPendingQuestionId] = useState(null);
+  const [pendingQuestionId, setPendingQuestionId] = useState(null); // ID of question waiting for answer
+  const [pendingQuestionSender, setPendingQuestionSender] = useState(null); // 'P1' or 'P2'
   const [toastError, setToastError] = useState('');
-  const [guessCount, setGuessCount] = useState(0);
 
   const chatEndRef = useRef(null);
 
-  // My Player identity in Online mode
-  const myPlayerRole = isOnline ? (isHost ? 'P1' : 'P2') : null;
+  // My identity in online mode
+  const myRole = isOnline ? (isHost ? 'P1' : 'P2') : currentTurn;
 
-  // Auto-scroll chat feed
+  // Target secret to guess for current turn player:
+  // If turn is P1 -> P1 is trying to guess P2's secret (p2Secret)
+  // If turn is P2 -> P2 is trying to guess P1's secret (p1Secret)
+  const getTargetSecret = (askingPlayer) => {
+    return askingPlayer === 'P1' ? p2Secret : p1Secret;
+  };
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, pendingQuestionId, toastError]);
+  }, [messages, pendingQuestionId, toastError, currentTurn]);
 
-  // PeerJS listener for online real-time synchronization
+  // PeerJS online real-time sync
   useEffect(() => {
     if (!isOnline) return;
 
@@ -39,20 +49,21 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
         sound.questionSubmitted();
         const newQuestion = {
           id: data.id,
-          sender: 'P2',
+          sender: data.sender, // 'P1' or 'P2'
           type: 'QUESTION',
           text: data.text,
           timestamp: data.timestamp
         };
         setMessages((prev) => [...prev, newQuestion]);
         setPendingQuestionId(data.id);
+        setPendingQuestionSender(data.sender);
       } else if (data.type === 'ANSWER_QUESTION') {
         if (data.answer === 'YES') sound.answerYes();
         else sound.answerNo();
 
         const ansMessage = {
           id: data.id,
-          sender: 'P1',
+          sender: data.sender, // Answerer
           type: 'ANSWER',
           questionId: data.questionId,
           answer: data.answer,
@@ -61,49 +72,57 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
         };
         setMessages((prev) => [...prev, ansMessage]);
         setPendingQuestionId(null);
-      } else if (data.type === 'MAKE_GUESS') {
-        setGuessCount((prev) => prev + 1);
+        setPendingQuestionSender(null);
 
-        if (data.val === secretValue) {
+        // Switch turn to the other player!
+        const nextTurn = data.sender === 'P1' ? 'P1' : 'P2'; // The one who asked gets next turn, or switch
+        setCurrentTurn(data.sender); 
+      } else if (data.type === 'MAKE_GUESS') {
+        if (data.isCorrect) {
           sound.victory();
           onWin({
-            guessCount: data.guessCount,
-            questionCount: data.questionCount,
+            winner: data.sender,
+            targetSecret: data.val,
+            p1Secret,
+            p2Secret,
             messages: data.messages
           });
         } else {
           sound.wrongGuess();
           const wrongMsg = {
             id: data.id,
-            sender: 'P2',
+            sender: data.sender,
             type: 'GUESS',
-            text: `Taxmin qilingan son: ${mode.prefix}${data.val} ${mode.unit}`,
+            text: `Taxmin qilindi: ${mode.prefix}${data.val} ${mode.unit}`,
             timestamp: data.timestamp
           };
           setMessages((prev) => [...prev, wrongMsg]);
-          setToastError(`Noto'g'ri taxmin (${mode.prefix}${data.val})! Savol berishda davom eting.`);
-          setTimeout(() => setToastError(''), 4000);
+          setToastError(`${data.sender === 'P1' ? 'Player 1' : 'Player 2'} noto'g'ri taxmin qildi (${mode.prefix}${data.val})! Navbat ikkinchi o'yinchiga o'tdi.`);
+          // Switch turn
+          setCurrentTurn(data.sender === 'P1' ? 'P2' : 'P1');
+          setTimeout(() => setToastError(''), 4500);
         }
       }
     });
 
     return () => unsubscribe();
-  }, [isOnline, secretValue, mode, onWin]);
+  }, [isOnline, p1Secret, p2Secret, mode, onWin]);
 
-  // Player 2 asks a question
+  // Handle asking a question
   const handleAskQuestion = (e) => {
     if (e) e.preventDefault();
     const query = questionInput.trim();
     if (!query) return;
 
-    if (isOnline && myPlayerRole === 'P1') {
-      setToastError('Siz Player 1 siz! Faqat Player 2 savol berishi mumkin.');
+    // Check if it's my turn in online mode
+    if (isOnline && myRole !== currentTurn) {
+      setToastError('Hozir sizning navbatingiz emas! Do\'stingiz javob berishini kuting.');
       setTimeout(() => setToastError(''), 3000);
       return;
     }
 
     if (pendingQuestionId !== null) {
-      setToastError('Iltimos, Player 1 avvalgi savolga javob berishini kuting!');
+      setToastError('Iltimos, avvalgi savolga javob berilishini kuting!');
       setTimeout(() => setToastError(''), 3000);
       return;
     }
@@ -112,9 +131,10 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
     const qId = Date.now();
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+    const askingPlayer = currentTurn;
     const newQuestion = {
       id: qId,
-      sender: 'P2',
+      sender: askingPlayer, // 'P1' or 'P2'
       type: 'QUESTION',
       text: query,
       timestamp
@@ -122,6 +142,7 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
 
     setMessages((prev) => [...prev, newQuestion]);
     setPendingQuestionId(qId);
+    setPendingQuestionSender(askingPlayer);
     setQuestionInput('');
     setToastError('');
 
@@ -129,18 +150,22 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
       peerManager.send({
         type: 'ASK_QUESTION',
         id: qId,
+        sender: askingPlayer,
         text: query,
         timestamp
       });
     }
   };
 
-  // Player 1 answers YES or NO
+  // Handle answering YES or NO
   const handleAnswerQuestion = (answerType) => {
     if (!pendingQuestionId) return;
 
-    if (isOnline && myPlayerRole === 'P2') {
-      setToastError('Siz Player 2 siz! Faqat Player 1 javob berishi mumkin.');
+    // The answerer must be the opposite of the question sender!
+    const answererRole = pendingQuestionSender === 'P1' ? 'P2' : 'P1';
+
+    if (isOnline && myRole !== answererRole) {
+      setToastError('Javob berish navbati do\'stingizda!');
       setTimeout(() => setToastError(''), 3000);
       return;
     }
@@ -153,7 +178,7 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
 
     const ansMessage = {
       id: Date.now(),
-      sender: 'P1',
+      sender: answererRole,
       type: 'ANSWER',
       questionId: pendingQuestionId,
       answer: answerType,
@@ -163,11 +188,17 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
 
     setMessages((prev) => [...prev, ansMessage]);
     setPendingQuestionId(null);
+    setPendingQuestionSender(null);
+
+    // Switch turn to the player who just answered!
+    const nextTurn = answererRole;
+    setCurrentTurn(nextTurn);
 
     if (isOnline) {
       peerManager.send({
         type: 'ANSWER_QUESTION',
         id: ansMessage.id,
+        sender: answererRole,
         questionId: pendingQuestionId,
         answer: answerType,
         text: textStr,
@@ -176,13 +207,13 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
     }
   };
 
-  // Player 2 numeric guess
+  // Handle numeric guess
   const handleMakeGuess = (e) => {
     e.preventDefault();
     if (!guessInput) return;
 
-    if (isOnline && myPlayerRole === 'P1') {
-      setToastError('Siz Player 1 siz! Faqat Player 2 sonni taxmin qilishi mumkin.');
+    if (isOnline && myRole !== currentTurn) {
+      setToastError('Hozir sizning navbatingiz emas!');
       setTimeout(() => setToastError(''), 3000);
       return;
     }
@@ -190,71 +221,75 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
     const val = Number(guessInput);
     if (isNaN(val)) return;
 
-    const newGuessCount = guessCount + 1;
-    setGuessCount(newGuessCount);
-
+    const askingPlayer = currentTurn;
+    const targetSecret = getTargetSecret(askingPlayer);
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const questionCount = messages.filter((m) => m.type === 'QUESTION').length;
 
-    if (val === secretValue) {
+    if (val === targetSecret) {
       sound.victory();
-      const winObj = {
-        guessCount: newGuessCount,
-        questionCount,
+      const winData = {
+        winner: askingPlayer,
+        targetSecret: val,
+        p1Secret,
+        p2Secret,
         messages
       };
 
       if (isOnline) {
         peerManager.send({
           type: 'MAKE_GUESS',
+          sender: askingPlayer,
           val,
-          id: Date.now(),
+          isCorrect: true,
           timestamp,
-          guessCount: newGuessCount,
-          questionCount,
           messages
         });
       }
 
-      onWin(winObj);
+      onWin(winData);
     } else {
       sound.wrongGuess();
       const wrongMsg = {
         id: Date.now(),
-        sender: 'P2',
+        sender: askingPlayer,
         type: 'GUESS',
-        text: `Taxmin qilingan son: ${mode.prefix}${val} ${mode.unit}`,
+        text: `Taxmin qilindi: ${mode.prefix}${val} ${mode.unit}`,
         timestamp
       };
 
       setMessages((prev) => [...prev, wrongMsg]);
-      setToastError(`Noto'g'ri taxmin (${mode.prefix}${val})! Savol berishda davom eting.`);
+      setToastError(`Noto'g'ri taxmin (${mode.prefix}${val})! Navbat ikkinchi o'yinchiga o'tdi.`);
       setGuessInput('');
+
+      // Switch turn after wrong guess
+      const nextTurn = askingPlayer === 'P1' ? 'P2' : 'P1';
+      setCurrentTurn(nextTurn);
 
       if (isOnline) {
         peerManager.send({
           type: 'MAKE_GUESS',
+          sender: askingPlayer,
           val,
-          id: wrongMsg.id,
+          isCorrect: false,
           timestamp,
-          guessCount: newGuessCount,
-          questionCount,
           messages
         });
       }
 
-      setTimeout(() => setToastError(''), 4000);
+      setTimeout(() => setToastError(''), 4500);
     }
   };
 
   const handleSelectQuickQuestion = (qText) => {
     if (pendingQuestionId !== null) {
-      setToastError('Iltimos, Player 1 avvalgi savolga javob berishini kuting.');
+      setToastError('Iltimos, avvalgi savolga javob berilishini kuting.');
       setTimeout(() => setToastError(''), 3000);
       return;
     }
     setQuestionInput(qText);
   };
+
+  const answererRole = pendingQuestionSender === 'P1' ? 'P2' : 'P1';
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6 space-y-4 flex flex-col h-[calc(100vh-4.5rem)]">
@@ -262,17 +297,17 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
       {/* TURN STATUS BANNER */}
       <div className="glass-panel rounded-2xl px-4 py-3 flex items-center justify-between border border-slate-800 shadow-md">
         <div className="flex items-center gap-3">
-          <div className={`w-3 h-3 rounded-full animate-ping ${pendingQuestionId ? 'bg-amber-400' : 'bg-cyan-400'}`} />
+          <div className={`w-3.5 h-3.5 rounded-full animate-ping ${currentTurn === 'P1' ? 'bg-cyan-400' : 'bg-indigo-400'}`} />
           <div>
-            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Hozirgi Bosqich</span>
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Navbat Boshqaruvi</span>
             <div className="text-sm font-bold text-white flex items-center gap-2">
               {pendingQuestionId ? (
                 <span className="text-amber-400 flex items-center gap-1.5">
-                  <User className="w-4 h-4" /> Player 1: Savolga Javob Bering
+                  <User className="w-4 h-4" /> {answererRole === 'P1' ? 'Player 1' : 'Player 2'}: Savolga javob bering
                 </span>
               ) : (
-                <span className="text-cyan-400 flex items-center gap-1.5">
-                  <MessageSquare className="w-4 h-4" /> Player 2: Savol Bering Yoki Taxmin Qiling
+                <span className={currentTurn === 'P1' ? 'text-cyan-400' : 'text-indigo-400'}>
+                  🚀 Navbat: {currentTurn === 'P1' ? 'Player 1' : 'Player 2'} (Savol bering yoki taxmin qiling)
                 </span>
               )}
             </div>
@@ -280,12 +315,12 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
         </div>
 
         <div className="text-right">
-          <span className="text-[10px] text-slate-400 uppercase font-semibold">Taxminlar Soni</span>
-          <div className="text-sm font-extrabold text-slate-200">{guessCount}</div>
+          <span className="text-[10px] text-slate-400 uppercase font-semibold">Rejim</span>
+          <div className="text-xs font-bold text-cyan-300">Galma-galdan</div>
         </div>
       </div>
 
-      {/* CHAT MESSENGER FEED */}
+      {/* CHAT FEED */}
       <div className="flex-1 glass-card rounded-3xl p-4 sm:p-6 border border-slate-800/80 overflow-y-auto space-y-4 flex flex-col shadow-inner">
         {messages.map((msg) => {
           if (msg.type === 'SYSTEM') {
@@ -297,56 +332,58 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
             );
           }
 
-          if (msg.sender === 'P2' && msg.type === 'QUESTION') {
+          const isP1 = msg.sender === 'P1';
+
+          if (msg.type === 'QUESTION') {
             return (
-              <div key={msg.id} className="flex flex-col items-end space-y-1 max-w-[85%] sm:max-w-[75%] ml-auto">
-                <span className="text-[10px] text-indigo-400 font-bold tracking-wider uppercase pr-2">
-                  Player 2 (Savol beruvchi)
+              <div key={msg.id} className={`flex flex-col space-y-1 max-w-[85%] sm:max-w-[75%] ${isP1 ? 'mr-auto items-start' : 'ml-auto items-end'}`}>
+                <span className={`text-[10px] font-bold tracking-wider uppercase ${isP1 ? 'text-cyan-400 pl-2' : 'text-indigo-400 pr-2'}`}>
+                  {isP1 ? 'Player 1 Savoli' : 'Player 2 Savoli'}
                 </span>
-                <div className="rounded-2xl rounded-tr-none px-4 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md text-sm font-medium">
+                <div className={`rounded-2xl px-4 py-3 text-white shadow-md text-sm font-medium ${
+                  isP1 ? 'bg-cyan-900/80 border border-cyan-700/60 rounded-tl-none' : 'bg-indigo-900/80 border border-indigo-700/60 rounded-tr-none'
+                }`}>
                   {msg.text}
                 </div>
-                <span className="text-[10px] text-slate-500 pr-1">{msg.timestamp}</span>
+                <span className="text-[10px] text-slate-500 px-1">{msg.timestamp}</span>
               </div>
             );
           }
 
-          if (msg.sender === 'P1' && msg.type === 'ANSWER') {
+          if (msg.type === 'ANSWER') {
             const isYes = msg.answer === 'YES';
             const isNo = msg.answer === 'NO';
 
             return (
-              <div key={msg.id} className="flex flex-col items-start space-y-1 max-w-[85%] sm:max-w-[75%] mr-auto">
-                <span className="text-[10px] text-emerald-400 font-bold tracking-wider uppercase pl-2">
-                  Player 1 (Sir saqlovchi)
+              <div key={msg.id} className={`flex flex-col space-y-1 max-w-[85%] sm:max-w-[75%] ${isP1 ? 'mr-auto items-start' : 'ml-auto items-end'}`}>
+                <span className={`text-[10px] font-bold tracking-wider uppercase ${isP1 ? 'text-cyan-400 pl-2' : 'text-indigo-400 pr-2'}`}>
+                  {isP1 ? 'Player 1 Javobi' : 'Player 2 Javobi'}
                 </span>
-                <div className={`rounded-2xl rounded-tl-none px-4 py-2.5 font-bold text-sm shadow-md flex items-center gap-2 border ${
-                  isYes 
-                    ? 'bg-emerald-950/80 border-emerald-600/60 text-emerald-300' 
-                    : isNo 
-                    ? 'bg-rose-950/80 border-rose-600/60 text-rose-300' 
-                    : 'bg-amber-950/80 border-amber-600/60 text-amber-300'
+                <div className={`rounded-2xl px-4 py-2.5 font-bold text-sm shadow-md flex items-center gap-2 border ${
+                  isP1 ? 'rounded-tl-none' : 'rounded-tr-none'
+                } ${
+                  isYes ? 'bg-emerald-950/80 border-emerald-600/60 text-emerald-300' : isNo ? 'bg-rose-950/80 border-rose-600/60 text-rose-300' : 'bg-amber-950/80 border-amber-600/60 text-amber-300'
                 }`}>
                   {isYes && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                   {isNo && <XCircle className="w-4 h-4 text-rose-400" />}
                   <span>{msg.text}</span>
                 </div>
-                <span className="text-[10px] text-slate-500 pl-1">{msg.timestamp}</span>
+                <span className="text-[10px] text-slate-500 px-1">{msg.timestamp}</span>
               </div>
             );
           }
 
           if (msg.type === 'GUESS') {
             return (
-              <div key={msg.id} className="flex flex-col items-end space-y-1 max-w-[85%] sm:max-w-[75%] ml-auto">
-                <span className="text-[10px] text-rose-400 font-bold tracking-wider uppercase pr-2">
-                  Player 2 Taxmin Urinishi
+              <div key={msg.id} className={`flex flex-col space-y-1 max-w-[85%] sm:max-w-[75%] ${isP1 ? 'mr-auto items-start' : 'ml-auto items-end'}`}>
+                <span className="text-[10px] text-rose-400 font-bold tracking-wider uppercase px-2">
+                  {isP1 ? 'Player 1 Taxmin Urinishi' : 'Player 2 Taxmin Urinishi'}
                 </span>
-                <div className="rounded-2xl rounded-tr-none px-4 py-2.5 bg-rose-950/60 border border-rose-800/80 text-rose-200 text-sm font-semibold flex items-center gap-2">
+                <div className="rounded-2xl px-4 py-2.5 bg-rose-950/60 border border-rose-800/80 text-rose-200 text-sm font-semibold flex items-center gap-2">
                   <Target className="w-4 h-4 text-rose-400" />
                   <span>{msg.text} - <strong className="text-rose-400">Noto'g'ri!</strong></span>
                 </div>
-                <span className="text-[10px] text-slate-500 pr-1">{msg.timestamp}</span>
+                <span className="text-[10px] text-slate-500 px-1">{msg.timestamp}</span>
               </div>
             );
           }
@@ -354,35 +391,34 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
           return null;
         })}
 
-        {/* PENDING QUESTION ANSWER PANEL */}
+        {/* PENDING QUESTION ANSWER CONTROLS */}
         {pendingQuestionId && (
           <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-700/60 space-y-3 animate-pulse-subtle my-2">
             <div className="flex items-center justify-between text-xs text-amber-300 font-bold">
               <span className="flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-400" />
-                Player 1: Player 2 bergan savolga javob bering!
+                {answererRole === 'P1' ? 'Player 1' : 'Player 2'}: Berilgan savolga javob bering!
               </span>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => handleAnswerQuestion('YES')}
-                disabled={isOnline && myPlayerRole === 'P2'}
+                disabled={isOnline && myRole !== answererRole}
                 className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-transform active:scale-95"
               >
                 <CheckCircle2 className="w-4 h-4" /> HA
               </button>
               <button
                 onClick={() => handleAnswerQuestion('NO')}
-                disabled={isOnline && myPlayerRole === 'P2'}
+                disabled={isOnline && myRole !== answererRole}
                 className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-rose-600/30 transition-transform active:scale-95"
               >
                 <XCircle className="w-4 h-4" /> YO'Q
               </button>
               <button
                 onClick={() => handleAnswerQuestion('NA')}
-                disabled={isOnline && myPlayerRole === 'P2'}
+                disabled={isOnline && myRole !== answererRole}
                 className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 font-semibold text-xs transition-colors"
-                title="Savol noma'lum yoki mos emas bo'lsa"
               >
                 Noma'lum
               </button>
@@ -402,7 +438,7 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
       )}
 
       {/* QUICK SUGGESTIONS */}
-      {!pendingQuestionId && mode.suggestedQuestions && (!isOnline || myPlayerRole === 'P2') && (
+      {!pendingQuestionId && mode.suggestedQuestions && (!isOnline || myRole === currentTurn) && (
         <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
           <span className="text-[11px] font-bold text-slate-400 shrink-0 uppercase tracking-wider">Tayyor Savollar:</span>
           {mode.suggestedQuestions.map((q, idx) => (
@@ -417,22 +453,28 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
         </div>
       )}
 
-      {/* CONTROLS */}
+      {/* INPUT CONTROLS */}
       <div className="grid sm:grid-cols-3 gap-3 pt-1">
         
-        {/* QUESTION INPUT */}
+        {/* ASK QUESTION */}
         <form onSubmit={handleAskQuestion} className="sm:col-span-2 flex gap-2">
           <input
             type="text"
-            placeholder={pendingQuestionId ? "Player 1 javob berishini kuting..." : "Player 2: Savolingizni kiriting..."}
+            placeholder={
+              pendingQuestionId 
+                ? "Javob berilishini kuting..." 
+                : isOnline && myRole !== currentTurn 
+                ? "Do'stingizning navbati..." 
+                : `${currentTurn === 'P1' ? 'Player 1' : 'Player 2'}: Savolingizni kiriting...`
+            }
             value={questionInput}
             onChange={(e) => setQuestionInput(e.target.value)}
-            disabled={pendingQuestionId !== null || (isOnline && myPlayerRole === 'P1')}
+            disabled={pendingQuestionId !== null || (isOnline && myRole !== currentTurn)}
             className="w-full pl-4 pr-4 py-3 rounded-2xl bg-slate-900 border border-slate-800 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
           />
           <button
             type="submit"
-            disabled={pendingQuestionId !== null || !questionInput.trim() || (isOnline && myPlayerRole === 'P1')}
+            disabled={pendingQuestionId !== null || !questionInput.trim() || (isOnline && myRole !== currentTurn)}
             className="px-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold text-sm flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50"
           >
             <span>Yuborish</span>
@@ -440,7 +482,7 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
           </button>
         </form>
 
-        {/* GUESS INPUT */}
+        {/* MAKE GUESS */}
         <form onSubmit={handleMakeGuess} className="flex gap-2">
           <input
             type="number"
@@ -449,12 +491,12 @@ export default function GameScreen({ mode, secretValue, isOnline, isHost, onWin 
             placeholder={`Taxmin (${mode.prefix}${mode.min}-${mode.max})`}
             value={guessInput}
             onChange={(e) => setGuessInput(e.target.value)}
-            disabled={isOnline && myPlayerRole === 'P1'}
+            disabled={isOnline && myRole !== currentTurn}
             className="w-full px-3 py-3 rounded-2xl bg-slate-950 border border-rose-900/60 text-white font-mono text-sm placeholder:text-slate-600 focus:outline-none focus:border-rose-500 disabled:opacity-50"
           />
           <button
             type="submit"
-            disabled={!guessInput || (isOnline && myPlayerRole === 'P1')}
+            disabled={!guessInput || (isOnline && myRole !== currentTurn)}
             className="px-4 py-3 rounded-2xl bg-gradient-to-r from-rose-600 to-pink-600 hover:brightness-110 disabled:opacity-50 text-white font-extrabold text-sm flex items-center gap-1 shadow-lg shadow-rose-600/30 transition-all"
           >
             <Target className="w-4 h-4" />
