@@ -7,6 +7,7 @@ import GameScreen from './components/GameScreen';
 import VictoryScreen from './components/VictoryScreen';
 import { sound } from './utils/sound';
 import { peerManager } from './utils/peer';
+import { Loader2 } from 'lucide-react';
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState('MODE_SELECT');
@@ -41,12 +42,21 @@ export default function App() {
     }
   };
 
+  // Online Host connected
   const handleConnectedAsHost = (code) => {
     setIsHost(true);
     setRoomCode(code);
     setCurrentStep('SETUP');
+
+    // Automatically send room mode sync to Guest when Guest connects
+    peerManager.send({
+      type: 'ROOM_INIT',
+      mode: selectedMode,
+      p1Secret
+    });
   };
 
+  // Online Guest connected
   const handleConnectedAsGuest = (code) => {
     setIsHost(false);
     setRoomCode(code);
@@ -60,7 +70,7 @@ export default function App() {
     setCurrentStep('PLAYING');
   };
 
-  // Online Dual Secret Set (Called when current user submits their secret)
+  // Online Dual Secret Set
   const handleDualSecretSetOnline = (mySecret) => {
     if (isHost) {
       setP1Secret(mySecret);
@@ -77,20 +87,23 @@ export default function App() {
     }
   };
 
-  // Check if BOTH secrets are ready in Online mode to transition to PLAYING
+  // Auto-transition to PLAYING only when BOTH secrets are set
   useEffect(() => {
-    if (isOnline && p1Secret !== null && p2Secret !== null) {
+    if (isOnline && p1Secret !== null && p2Secret !== null && currentStep !== 'PLAYING' && currentStep !== 'VICTORY') {
       sound.answerYes();
       setCurrentStep('PLAYING');
     }
-  }, [isOnline, p1Secret, p2Secret]);
+  }, [isOnline, p1Secret, p2Secret, currentStep]);
 
-  // PeerJS listener for secrets in Online mode
+  // PeerJS listener for room init and secrets
   useEffect(() => {
     if (!isOnline) return;
 
     const unsubscribe = peerManager.onData((data) => {
-      if (data.type === 'SET_P1_SECRET') {
+      if (data.type === 'ROOM_INIT') {
+        if (data.mode) setSelectedMode(data.mode);
+        if (data.p1Secret !== undefined) setP1Secret(data.p1Secret);
+      } else if (data.type === 'SET_P1_SECRET') {
         setP1Secret(data.val);
       } else if (data.type === 'SET_P2_SECRET') {
         setP2Secret(data.val);
@@ -99,6 +112,21 @@ export default function App() {
 
     return () => unsubscribe();
   }, [isOnline]);
+
+  // If host connects, resend ROOM_INIT whenever peer connects
+  useEffect(() => {
+    if (!isOnline || !isHost) return;
+
+    const unsubscribe = peerManager.onConnect(() => {
+      peerManager.send({
+        type: 'ROOM_INIT',
+        mode: selectedMode,
+        p1Secret
+      });
+    });
+
+    return () => unsubscribe();
+  }, [isOnline, isHost, selectedMode, p1Secret]);
 
   const handleWin = (stats) => {
     setWinStats(stats);
@@ -142,7 +170,7 @@ export default function App() {
           <ModeSelection onSelectMode={handleSelectMode} />
         )}
 
-        {currentStep === 'CONNECT_ROOM' && selectedMode && (
+        {currentStep === 'CONNECT_ROOM' && (
           <RoomConnect
             mode={selectedMode}
             onConnectedAsHost={handleConnectedAsHost}
@@ -151,27 +179,41 @@ export default function App() {
           />
         )}
 
-        {currentStep === 'SETUP' && selectedMode && (
-          <SecretSetup
-            mode={selectedMode}
-            isOnline={isOnline}
-            isHost={isHost}
-            p1Secret={p1Secret}
-            p2Secret={p2Secret}
-            onDualSecretSet={isOnline ? handleDualSecretSetOnline : handleDualSecretSetLocal}
-            onBack={() => setCurrentStep(isOnline ? 'CONNECT_ROOM' : 'MODE_SELECT')}
-          />
+        {currentStep === 'SETUP' && (
+          selectedMode ? (
+            <SecretSetup
+              mode={selectedMode}
+              isOnline={isOnline}
+              isHost={isHost}
+              p1Secret={p1Secret}
+              p2Secret={p2Secret}
+              onDualSecretSet={isOnline ? handleDualSecretSetOnline : handleDualSecretSetLocal}
+              onBack={() => setCurrentStep(isOnline ? 'CONNECT_ROOM' : 'MODE_SELECT')}
+            />
+          ) : (
+            <div className="max-w-md mx-auto my-16 p-8 text-center glass-card rounded-3xl space-y-4">
+              <Loader2 className="w-10 h-10 mx-auto animate-spin text-cyan-400" />
+              <p className="text-sm font-semibold text-slate-200">Xona rejim ma'lumotlari yuklanmoqda...</p>
+            </div>
+          )
         )}
 
-        {currentStep === 'PLAYING' && selectedMode && p1Secret !== null && p2Secret !== null && (
-          <GameScreen
-            mode={selectedMode}
-            p1Secret={p1Secret}
-            p2Secret={p2Secret}
-            isOnline={isOnline}
-            isHost={isHost}
-            onWin={handleWin}
-          />
+        {currentStep === 'PLAYING' && (
+          selectedMode && p1Secret !== null && p2Secret !== null ? (
+            <GameScreen
+              mode={selectedMode}
+              p1Secret={p1Secret}
+              p2Secret={p2Secret}
+              isOnline={isOnline}
+              isHost={isHost}
+              onWin={handleWin}
+            />
+          ) : (
+            <div className="max-w-md mx-auto my-16 p-8 text-center glass-card rounded-3xl space-y-4">
+              <Loader2 className="w-10 h-10 mx-auto animate-spin text-cyan-400" />
+              <p className="text-sm font-semibold text-slate-200">O'yin boshlanmoqda. Sirli sonlar sinxronlanmoqda...</p>
+            </div>
+          )
         )}
 
         {currentStep === 'VICTORY' && selectedMode && (
