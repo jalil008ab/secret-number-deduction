@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Shield, ArrowRight, UserCheck, KeyRound, AlertCircle, Sparkles, CheckCircle2, Lock } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight, UserCheck, KeyRound, AlertCircle, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
 import { sound } from '../utils/sound';
 
-export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, onBack }) {
-  // Step in Local mode: 'P1_INPUT' | 'PASS_TO_P2' | 'P2_INPUT'
+export default function SecretSetup({ mode, isOnline, isHost, p1Secret, p2Secret, onDualSecretSet, onBack }) {
+  // Local Mode steps: 'P1_INPUT' | 'PASS_TO_P2' | 'P2_INPUT'
   const [localStep, setLocalStep] = useState('P1_INPUT');
   const [p1Value, setP1Value] = useState('');
-  const [p2Value, setP2Value] = useState('');
   const [currentInputValue, setCurrentInputValue] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Online Mode state
-  const [mySecretSubmitted, setMySecretSubmitted] = useState(false);
+  // Determine if MY secret is submitted in Online mode:
+  // If Host -> check p1Secret !== null
+  // If Guest -> check p2Secret !== null
+  const mySecret = isHost ? p1Secret : p2Secret;
+  const opponentSecret = isHost ? p2Secret : p1Secret;
+  const isMySecretSubmitted = mySecret !== null;
+  const isOpponentSecretSubmitted = opponentSecret !== null;
 
   // Local Mode: P1 locks secret
   const handleLocalP1Submit = (e) => {
@@ -55,11 +59,10 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
 
     sound.click();
     const finalP2 = num;
-    setP2Value(finalP2);
     onDualSecretSet(p1Value, finalP2);
   };
 
-  // Online Mode: Player submits their secret
+  // Online Mode: Current user submits their secret
   const handleOnlineSubmit = (e) => {
     e.preventDefault();
     setErrorMsg('');
@@ -76,39 +79,64 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
     }
 
     sound.click();
-    setMySecretSubmitted(true);
     onDualSecretSet(num);
   };
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8 sm:py-12 space-y-6">
       
-      {/* ONLINE MODE: EACH PLAYER ENTERS THEIR OWN SECRET */}
+      {/* ONLINE MODE: REAL-TIME TWO-SIDED SECRET SETUP */}
       {isOnline ? (
         <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-800 space-y-6 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500" />
 
-          {!mySecretSubmitted ? (
+          {/* ONLINE STATUS HEADER */}
+          <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-900 border border-slate-800 text-xs">
+            <div className="flex items-center gap-2">
+              {isHost ? (
+                isMySecretSubmitted ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+              ) : (
+                isOpponentSecretSubmitted ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+              )}
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase font-bold">Player 1 Soni</span>
+                <span className="font-semibold text-white">
+                  {p1Secret !== null ? 'Saqlandi ✅' : 'Kiritilmoqda...'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {!isHost ? (
+                isMySecretSubmitted ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+              ) : (
+                isOpponentSecretSubmitted ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+              )}
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase font-bold">Player 2 Soni</span>
+                <span className="font-semibold text-white">
+                  {p2Secret !== null ? 'Saqlandi ✅' : 'Kiritilmoqda...'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {!isMySecretSubmitted ? (
             <>
               <div className="space-y-2 text-center">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-800/50 text-cyan-400 text-xs font-semibold">
-                  <UserCheck className="w-3.5 h-3.5" /> Ikki Tomonlama Sirli Son Kiritish
+                  <UserCheck className="w-3.5 h-3.5" /> {isHost ? "Player 1 (Siz)" : "Player 2 (Siz)"}
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-                  {isHost ? "Player 1: O'z Sirli Soningizni Kiriting" : "Player 2: O'z Sirli Soningizni Kiriting"}
+                  O'z Sirli Soningizni Kiriting
                 </h2>
                 <p className="text-slate-400 text-xs sm:text-sm">
                   Do'stingiz bu sonni bilmaydi! Oraliq: <strong className="text-cyan-300">{mode.prefix}{mode.min} - {mode.prefix}{mode.max} {mode.unit}</strong>
-                  {mode.itemName && ` (${mode.itemName})`}
                 </p>
               </div>
 
               <form onSubmit={handleOnlineSubmit} className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center justify-between">
-                    <span>Siz o'ylagan sirli {mode.id === 'AGE' ? 'yosh' : 'narx'}</span>
-                  </label>
-
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 font-bold text-lg">
                       {mode.prefix ? mode.prefix : '#'}
@@ -155,18 +183,22 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
                 <CheckCircle2 className="w-8 h-8" />
               </div>
               <h3 className="text-2xl font-bold text-white">Sizning Sirli Soningiz Saqlandi!</h3>
-              <p className="text-slate-400 text-xs sm:text-sm">
-                Do'stingiz ham o'z sirli sonini kiritmoqda. Har ikkalangiz kiritib bo'lgach, o'yin avtomatik boshlanadi!
+              <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
+                Do'stingiz ham o'z sirli sonini kiritishi kutilmoqda. Do'stingiz kiritgach, o'yin avtomatik boshlanadi!
               </p>
+              <div className="flex items-center justify-center gap-2 text-xs text-cyan-300 font-semibold animate-pulse">
+                <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                <span>Do'stingiz kiritishi kutilmoqda...</span>
+              </div>
             </div>
           )}
         </div>
       ) : (
-        /* LOCAL PASS-AND-PLAY MODE FOR BOTH PLAYERS WITH VISUAL STEP INDICATOR */
+        /* LOCAL PASS-AND-PLAY MODE FOR BOTH PLAYERS */
         <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-800 space-y-6 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500" />
 
-          {/* VISUAL 2-STEP INDICATOR */}
+          {/* VISUAL STEP INDICATOR */}
           <div className="flex items-center justify-center gap-4 border-b border-slate-800/80 pb-4">
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold ${
               localStep === 'P1_INPUT' ? 'bg-cyan-950/90 border-cyan-500/50 text-cyan-300' : 'bg-slate-900 border-slate-800 text-slate-500'

@@ -60,7 +60,7 @@ export default function App() {
     setCurrentStep('PLAYING');
   };
 
-  // Online Dual Secret Set
+  // Online Dual Secret Set (Called when current user submits their secret)
   const handleDualSecretSetOnline = (mySecret) => {
     if (isHost) {
       setP1Secret(mySecret);
@@ -68,20 +68,22 @@ export default function App() {
         type: 'SET_P1_SECRET',
         val: mySecret
       });
-      if (p2Secret !== null) {
-        setCurrentStep('PLAYING');
-      }
     } else {
       setP2Secret(mySecret);
       peerManager.send({
         type: 'SET_P2_SECRET',
         val: mySecret
       });
-      if (p1Secret !== null) {
-        setCurrentStep('PLAYING');
-      }
     }
   };
+
+  // Check if BOTH secrets are ready in Online mode to transition to PLAYING
+  useEffect(() => {
+    if (isOnline && p1Secret !== null && p2Secret !== null) {
+      sound.answerYes();
+      setCurrentStep('PLAYING');
+    }
+  }, [isOnline, p1Secret, p2Secret]);
 
   // PeerJS listener for secrets in Online mode
   useEffect(() => {
@@ -90,21 +92,13 @@ export default function App() {
     const unsubscribe = peerManager.onData((data) => {
       if (data.type === 'SET_P1_SECRET') {
         setP1Secret(data.val);
-        // If guest already entered p2Secret, launch game
-        if (p2Secret !== null || !isHost) {
-          setCurrentStep('PLAYING');
-        }
       } else if (data.type === 'SET_P2_SECRET') {
         setP2Secret(data.val);
-        // If host already entered p1Secret, launch game
-        if (p1Secret !== null || isHost) {
-          setCurrentStep('PLAYING');
-        }
       }
     });
 
     return () => unsubscribe();
-  }, [isOnline, isHost, p1Secret, p2Secret]);
+  }, [isOnline]);
 
   const handleWin = (stats) => {
     setWinStats(stats);
@@ -162,6 +156,8 @@ export default function App() {
             mode={selectedMode}
             isOnline={isOnline}
             isHost={isHost}
+            p1Secret={p1Secret}
+            p2Secret={p2Secret}
             onDualSecretSet={isOnline ? handleDualSecretSetOnline : handleDualSecretSetLocal}
             onBack={() => setCurrentStep(isOnline ? 'CONNECT_ROOM' : 'MODE_SELECT')}
           />
