@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Shield, ArrowRight, UserCheck, KeyRound, AlertCircle, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, Shield, ArrowRight, UserCheck, KeyRound, AlertCircle, Sparkles, CheckCircle2, Lock } from 'lucide-react';
 import { sound } from '../utils/sound';
 
 export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, onBack }) {
@@ -77,7 +77,7 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
 
     sound.click();
     setMySecretSubmitted(true);
-    onDualSecretSet(num); // In App.jsx this will send PEER packet to sync
+    onDualSecretSet(num);
   };
 
   return (
@@ -92,10 +92,10 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
             <>
               <div className="space-y-2 text-center">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-800/50 text-cyan-400 text-xs font-semibold">
-                  <UserCheck className="w-3.5 h-3.5" /> {isHost ? "Player 1 (Siz)" : "Player 2 (Siz)"}
+                  <UserCheck className="w-3.5 h-3.5" /> Ikki Tomonlama Sirli Son Kiritish
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-                  O'z Sirli Soningizni Belgilang
+                  {isHost ? "Player 1: O'z Sirli Soningizni Kiriting" : "Player 2: O'z Sirli Soningizni Kiriting"}
                 </h2>
                 <p className="text-slate-400 text-xs sm:text-sm">
                   Do'stingiz bu sonni bilmaydi! Oraliq: <strong className="text-cyan-300">{mode.prefix}{mode.min} - {mode.prefix}{mode.max} {mode.unit}</strong>
@@ -106,7 +106,7 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
               <form onSubmit={handleOnlineSubmit} className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center justify-between">
-                    <span>Sizning Sirli {mode.id === 'AGE' ? 'Yoshingiz' : 'Narxingiz'}</span>
+                    <span>Siz o'ylagan sirli {mode.id === 'AGE' ? 'yosh' : 'narx'}</span>
                   </label>
 
                   <div className="relative">
@@ -144,7 +144,7 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
                   type="submit"
                   className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl shadow-cyan-500/25 hover:brightness-110 active:scale-[0.99] transition-all"
                 >
-                  <span>Sirni Saqlash</span>
+                  <span>Sirli Sonimni Saqlash</span>
                   <ArrowRight className="w-5 h-5" />
                 </button>
               </form>
@@ -156,27 +156,46 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
               </div>
               <h3 className="text-2xl font-bold text-white">Sizning Sirli Soningiz Saqlandi!</h3>
               <p className="text-slate-400 text-xs sm:text-sm">
-                Do'stingiz ham o'z sirli sonini kiritmoqda. Har ikkalangiz kiritgach, o'yin avtomatik boshlanadi!
+                Do'stingiz ham o'z sirli sonini kiritmoqda. Har ikkalangiz kiritib bo'lgach, o'yin avtomatik boshlanadi!
               </p>
             </div>
           )}
         </div>
       ) : (
-        /* LOCAL PASS-AND-PLAY MODE FOR BOTH PLAYERS */
+        /* LOCAL PASS-AND-PLAY MODE FOR BOTH PLAYERS WITH VISUAL STEP INDICATOR */
         <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-800 space-y-6 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500" />
+
+          {/* VISUAL 2-STEP INDICATOR */}
+          <div className="flex items-center justify-center gap-4 border-b border-slate-800/80 pb-4">
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold ${
+              localStep === 'P1_INPUT' ? 'bg-cyan-950/90 border-cyan-500/50 text-cyan-300' : 'bg-slate-900 border-slate-800 text-slate-500'
+            }`}>
+              <span className="w-5 h-5 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-[10px] font-black">1</span>
+              <span>Player 1 Son Kiritishi</span>
+            </div>
+
+            <ArrowRight className="w-4 h-4 text-slate-600 shrink-0" />
+
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold ${
+              localStep === 'P2_INPUT' ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-300' : 'bg-slate-900 border-slate-800 text-slate-500'
+            }`}>
+              <span className="w-5 h-5 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center text-[10px] font-black">2</span>
+              <span>Player 2 Son Kiritishi</span>
+            </div>
+          </div>
 
           {localStep === 'P1_INPUT' && (
             <>
               <div className="space-y-2 text-center">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-800/50 text-cyan-400 text-xs font-semibold">
-                  <UserCheck className="w-3.5 h-3.5" /> Player 1 Bosqichi
+                  <UserCheck className="w-3.5 h-3.5" /> 1-Bosqich: Player 1 Soni
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-                  Player 1: Sirli Soningizni Kiriting
+                  Player 1: O'z Sirli Soningizni Kiriting
                 </h2>
                 <p className="text-slate-400 text-xs sm:text-sm">
-                  Player 2 dan sir saqlang! Oraliq: <strong className="text-cyan-300">{mode.prefix}{mode.min} - {mode.prefix}{mode.max} {mode.unit}</strong>
+                  Player 2 qaramasligini ta'minlang! Oraliq: <strong className="text-cyan-300">{mode.prefix}{mode.min} - {mode.prefix}{mode.max} {mode.unit}</strong>
                 </p>
               </div>
 
@@ -225,7 +244,7 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
                     type="submit"
                     className="flex-1 py-3.5 px-5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/25 hover:brightness-110 transition-all"
                   >
-                    <span>Saqlash va Player 2 ga Berish</span>
+                    <span>1-Sonni Saqlash & Player 2 ga Berish</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -239,16 +258,16 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
                 <KeyRound className="w-10 h-10" />
               </div>
               <div className="space-y-2">
-                <h3 className="text-2xl font-extrabold text-white">Player 1 Son Saqlandi! 🔒</h3>
+                <h3 className="text-2xl font-extrabold text-white">Player 1 Soni Saqlandi! 🔒</h3>
                 <p className="text-slate-300 text-sm">
-                  Iltimos, telefonni <strong className="text-cyan-400">Player 2</strong> ga bering. Player 2 ham o'z sirli sonini kiritishi kerak!
+                  Iltimos, telefonni <strong className="text-emerald-400">Player 2</strong> ga bering. Player 2 ham o'zi o'ylagan sirli sonini kiritishi kerak!
                 </p>
               </div>
               <button
                 onClick={() => setLocalStep('P2_INPUT')}
                 className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-extrabold text-base flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/25 hover:brightness-110 transition-all"
               >
-                <span>Men Player 2 man – Sonimni Kiritaman!</span>
+                <span>Men Player 2 man – 2-Sirli Sonni Kiritaman!</span>
                 <ArrowRight className="w-5 h-5" />
               </button>
             </div>
@@ -258,13 +277,13 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
             <>
               <div className="space-y-2 text-center">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-800/50 text-emerald-400 text-xs font-semibold">
-                  <UserCheck className="w-3.5 h-3.5" /> Player 2 Bosqichi
+                  <UserCheck className="w-3.5 h-3.5" /> 2-Bosqich: Player 2 Soni
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-                  Player 2: Sirli Soningizni Kiriting
+                  Player 2: O'z Sirli Soningizni Kiriting
                 </h2>
                 <p className="text-slate-400 text-xs sm:text-sm">
-                  Player 1 dan sir saqlang! Oraliq: <strong className="text-cyan-300">{mode.prefix}{mode.min} - {mode.prefix}{mode.max} {mode.unit}</strong>
+                  Player 1 qaramasligini ta'minlang! Oraliq: <strong className="text-cyan-300">{mode.prefix}{mode.min} - {mode.prefix}{mode.max} {mode.unit}</strong>
                 </p>
               </div>
 
@@ -305,7 +324,7 @@ export default function SecretSetup({ mode, isOnline, isHost, onDualSecretSet, o
                   type="submit"
                   className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/25 hover:brightness-110 transition-all"
                 >
-                  <span>Saqlash va O'yinni Boshlash</span>
+                  <span>2-Sonni Saqlash & O'yinni Boshlash</span>
                   <ArrowRight className="w-5 h-5" />
                 </button>
               </form>
